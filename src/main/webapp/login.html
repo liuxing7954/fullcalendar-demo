@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>登陆</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+    <link href="/css/vendor/bootstrap.min.css" rel="stylesheet">
+    <link href="/css/flat-ui.css" rel="stylesheet">
+    <link href="/css/loading.css" rel="stylesheet">
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #edeff1;
+            /*position: relative;*/
+        }
+
+        .container {
+            margin: 0 auto; /*水平居中*/
+            position: relative;
+            top: 50%; /*偏移*/
+            transform: translateY(-50%);
+        }
+    </style>
+</head>
+
+<body>
+<div class="box" style="display: none">
+    <div class="spinner spinnerTwo"><span></span></div>
+</div>
+<div style="float:left;width:100%;text-align: center;height: 80px">
+    <iframe name="weather_inc" src="http://i.tianqi.com/index.php?c=code&id=84&py=hefei" width="130"
+            height="82" frameborder="0" marginwidth="0" marginheight="0" scrolling="no"></iframe>
+</div>
+<div class="container">
+
+    <!--<form name="loginForm" method="post" action="/menu.php" onsubmit="return(fnSubmit());">-->
+    <div class="login-form">
+
+
+        <h2>日程管理
+            <img src="/flat-ui/toilet-paper.svg" alt="Toilet-Paper" width="80px"
+                 style="padding-left:10px">
+
+        </h2>
+        <div class="form-group">
+            <input type="text" class="form-control login-field" value="admin" placeholder="Enter your name"
+                   name="userId" id="userId"/>
+            <label class="login-field-icon fui-user" for="login-name"></label>
+        </div>
+
+        <div class="form-group">
+            <input type="password" class="form-control login-field" value="admin" placeholder="Password"
+                   name="initPass"
+                   id="initPass"/>
+            <label class="login-field-icon fui-lock" for="login-pass"></label>
+        </div>
+
+        <input style="display: none;" type="password" name="pass" id="pass">
+
+        <button class="btn btn-primary btn-lg btn-block" type="submit" id="login">Log in</button>
+<!--        <a class="login-link" href="javascript:alert('没做');">注册</a>-->
+    </div>
+    <!--</form>-->
+</div>
+
+<!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+<script src="jq/main.js"></script>
+
+<script>
+
+    // var host = 'http://localhost:8080';
+    var host = '';
+
+    //写cookies
+
+    function setCookie(name, value) {
+        var Days = 365;
+        var exp = new Date();
+        exp.setTime(exp.getTime() + Days * 24 * 60 * 60 * 1000);
+        document.cookie = name + "=" + escape(value) + ";expires=" + exp.toGMTString();
+    }
+
+    //读取cookies
+    function getCookie(name) {
+        var arr, reg = new RegExp("(^| )" + name + "=([^;]*)(;|$)");
+
+        if (arr = document.cookie.match(reg))
+
+            return unescape(arr[2]);
+        else
+            return null;
+    }
+
+
+    $(function () {
+        $('#userId').val(getCookie('userId'));
+        $('#initPass').val(getCookie('initPass'));
+
+        $.ajaxSettings.async = false;//先手动关闭默认的异步请求
+        $('#login').click(function () {
+            $('.box').show();
+            var params = {
+                username: $('#userId').val(),
+                pass: $('#initPass').val(),
+            };
+            $.ajax({
+                url: host+'/api/login',
+                async: false,
+                data: params,
+                type: 'POST',
+                success: function (rst) {
+                    $('.box').hide();
+                    console.log(rst);
+                    if (rst === 'success') {
+                        console.log('登录成功');
+                        setCookie('userId', params.username);
+                        setCookie('initPass', params.pass);
+                        window.location.href = '/index.html';
+                    }else{
+                        alert('账号或者密码错误');
+                    }
+                }
+            });
+
+        });
+        $.ajaxSettings.async = true;
+    });
+
+</script>
+
+</body>
+
+</html>

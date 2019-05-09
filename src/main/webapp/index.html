@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>日历</title>
+
+    <script src="jq/main.js"></script>
+    <link href="bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <script src="bootstrap/js/bootstrap.min.js"></script>
+
+    <link href="bootstrap-datepicker/dist/css/bootstrap-datepicker.min.css" rel="stylesheet">
+    <script src="bootstrap-datepicker/dist/js/bootstrap-datepicker.min.js"></script>
+    <script src="bootstrap-datepicker/dist/locales/bootstrap-datepicker.zh-CN.min.js"></script>
+
+    <link href='fullcalendar/all.css' rel='stylesheet'>
+    <link href='fullcalendar/core/main.css' rel='stylesheet'/>
+    <link href='fullcalendar/bootstrap/main.css' rel='stylesheet'/>
+    <link href='fullcalendar/timegrid/main.css' rel='stylesheet'/>
+    <link href='fullcalendar/daygrid/main.css' rel='stylesheet'/>
+    <link href='fullcalendar/list/main.css' rel='stylesheet'/>
+
+    <script src='fullcalendar/rrule/rrule.js'></script>
+
+    <script src='fullcalendar/core/main.js'></script>
+    <script src='fullcalendar/daygrid/main.js'></script>
+    <script src='fullcalendar/timegrid/main.js'></script>
+    <script src='fullcalendar/interaction/main.js'></script>
+    <script src='fullcalendar/rrule/main.js'></script>
+    <script src='fullcalendar/bootstrap/main.js'></script>
+    <script src='fullcalendar/list/main.js'></script>
+    <script src='fullcalendar/google-calendar/main.js'></script>
+    <script src='moment/main.js'></script>
+
+    <script src='artDialog/main.js'></script>
+    <script src='fullcalendar/core/locales/zh-cn.js'></script>
+    <!--<script src='events.js'></script>-->
+    <script>
+        $(function () {
+            $.ajax({
+                url: host + '/api/isLogin',
+                success: function (rst) {
+                    if (rst === 'success') {
+                        refreshEvents();
+                    } else {
+                        alert('尚未登陆');
+                        window.location.href = '/login.html';
+                    }
+                }
+            });
+        })
+    </script>
+    <script>
+        var host = 'http://localhost:8080';
+        host = '';
+        var calendar = null;
+        var eventsArr = [];
+        const clearForm = function () {
+            $('#eventTitle').val('');
+            $('#startdate').val(moment(new Date()).format("YYYY-MM-DD"));
+            $('#enddate').val(moment(new Date()).add(1, 'd').format("YYYY-MM-DD"));
+            $('#enddateP').show();
+            $('#city').val('hefei');
+            $('#city').trigger('input');
+            $('input:radio[name="repeatType"]')[0].checked = true;
+            $('input:radio[name="eventType"]')[0].checked = true;
+        };
+        const addEvent = function () {
+            var title = $('#eventTitle').val();
+            var start = $('#startdate').val();
+            var end = $('#enddate').val();
+            var city = $('#city').val();
+            var repeatType = $('input:radio[name="repeatType"]:checked').val();
+            var eventType = $('input:radio[name="eventType"]:checked').val();
+            if (title === '' ||
+                start === '' ||
+                end === '' ||
+                city === '') {
+                dialog({
+                    content: '有未填参数',
+                    ok: function () {
+                    }
+                }).show();
+                return false;
+            }
+            var param = {
+                title: title,
+                start: start,
+                end: end,
+                city: city,
+                repeatFlag: repeatType !== 'NULL',
+                repeatType: repeatType,
+                eventType: eventType
+            };
+            $.ajax({
+                url: host + '/api/addEvent',
+                async: true,
+                data: param,
+                type: 'POST',
+                success: function (rst) {
+                    console.log(rst);
+                    if (rst === 'success') {
+                        refreshEvents();
+                    } else {
+                        alert('网络异常');
+                    }
+                }
+            });
+            return true;
+        };
+        const addSimpleEvent = function (arg) {
+            clearForm();
+            $('#startdate').val(moment(arg.start).format("YYYY-MM-DD"));
+            $('#enddate').val(moment(arg.end).format("YYYY-MM-DD"));
+            dialog({
+                title: '新增',
+                content: $('#dialog-form'),
+                ok: function () {
+                    return addEvent();
+                }
+            }).showModal();
+            calendar.unselect()
+        };
+        const addLoopEvent = function () {
+            clearForm();
+            dialog({
+                title: '新增',
+                content: $('#dialog-form'),
+                ok: function () {
+                    return addEvent();
+                }
+            }).showModal();
+        };
+        const searchEvent = function () {
+            dialog({
+                id: 'search',
+                title: '查询',
+                content: $('#search-result'),
+            }).showModal();
+        };
+        const editEvent = function (arg) {
+            if (arg.event.title.substr(-1) === '节') {
+                arg.jsEvent.preventDefault();
+                return;
+            }
+            var currentEvent = {};
+            eventsArr.map(function (item) {
+                if (item.id == arg.event.id) {
+                    currentEvent = item;
+                }
+            });
+
+            $('#eventTitle').val(currentEvent.title);
+            $('#startdate').val(moment(currentEvent.start).format('YYYY-MM-DD'));
+            try {
+                $('#enddate').val(moment(currentEvent.end).format('YYYY-MM-DD'));
+            } catch (e) {
+                console.log('没有结束时间');
+            }
+            $('#city').val(currentEvent.city);
+            $('#city').trigger('input');
+            currentEvent.repeatType = currentEvent.repeatType || "NULL";
+            $(`input:radio[value="${currentEvent.repeatType}"]`)[0].checked = true;
+            $(`input:radio[name="repeatType"]`).trigger('change');
+            $(`input:radio[value="${currentEvent.eventType}"]`)[0].checked = true;
+
+
+            dialog({
+                title: "编辑日程",
+                content: $("#dialog-form"),
+                okValue: "修改",
+                ok: function () {
+                    if (addEvent()) {
+                        $.ajax({
+                            url: host + '/api/removeEvent',
+                            async: true,
+                            data: {eventId: arg.event.id},
+                            type: 'POST',
+                            success: function (rst) {
+                                console.log(rst);
+                                if (rst === 'success') {
+                                    refreshEvents();
+                                } else {
+                                    alert('网络异常');
+                                }
+                            }
+                        });
+                    }
+
+                },
+                button: [{
+                    value: "删除",
+                    callback: function () {
+                        $.ajax({
+                            url: host + '/api/removeEvent',
+                            async: true,
+                            data: {eventId: arg.event.id},
+                            type: 'POST',
+                            success: function (rst) {
+                                console.log(rst);
+                                if (rst === 'success') {
+                                    refreshEvents();
+                                } else {
+                                    alert('网络异常');
+                                }
+                            }
+                        });
+                    }
+                }],
+                cancelValue: "取消",
+                cancel: function () {
+                }
+            }).showModal();
+            arg.jsEvent.preventDefault()
+        };
+        const refreshEvents = function () {
+            $.ajax({
+                url: host + '/api/getEvents',
+                success: function (rst) {
+                    eventsArr = JSON.parse(rst);
+                    console.log(eventsArr);
+                    calendar.removeAllEventSources();
+                    var repeatArr = [];
+                    var workArr = [];
+                    var lifeArr = [];
+                    eventsArr.map(function (item, index) {
+                        if (item.repeatFlag === true)
+                            repeatArr.push({
+                                id: item.id,
+                                title: item.title,
+                                allDay: true,
+                                rrule: {
+                                    dtstart: item.start,
+                                    freq: item.repeatType
+                                },
+                            });
+                        else if (item.eventType === '工作') {
+                            workArr.push(item);
+                        } else {
+                            lifeArr.push(item);
+                        }
+                    });
+                    calendar.addEventSource({
+                        events: repeatArr,
+                        color: '#cf4813',
+                        textColor: '#fff'
+                    });
+                    calendar.addEventSource({
+                        events: workArr,
+                        color: '#1a94bc',
+                        textColor: '#fff'
+                    });
+                    calendar.addEventSource({
+                        events: lifeArr,
+                        color: '#f03752',
+                        textColor: '#fff'
+                    });
+                    calendar.addEventSource({
+                        googleCalendarId: 'china__zh_cn@holiday.calendar.google.com',
+                        color: '#cccccc',
+                        editable: false,
+                        textColor: '#000'
+                    });
+
+                }
+            });
+        };
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var calendarEl = document.getElementById('calendar');
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                plugins: ['bootstrap', 'interaction', 'dayGrid', 'timeGrid', 'rrule', 'list', 'googleCalendar'],
+                locale: 'zh-cn',
+//                themeSystem: 'bootstrap',
+                header: {
+                    left: 'dayGridMonth,listMonth today',
+                    center: 'title',
+                    right: 'searchEventBtn addEventBtn prevYear,prev,next,nextYear'
+                },
+                customButtons: {            //自定义header属性中按钮[customButtons与header并用]
+                    addEventBtn: {
+                        text: '新增事件',
+                        click: addLoopEvent
+                    },
+                    searchEventBtn: {
+                        text: '查询',
+                        click: searchEvent
+                    }
+                },
+                googleCalendarApiKey: 'AIzaSyDcnW6WejpTOCffshGDDb4neIrXVUA1EAE',
+                eventSources: [],
+                editable: true,//配合插件interaction，实现可拖动
+                dayClick: function (a) {
+                    console.log(a);
+                },
+                eventLimit: true,//事件太长可以缩略
+                navLinks: false, // 点击日期可以跳转至当日详细内容
+                businessHours: true, // 显示周日
+                weekNumbers: true,
+                weekNumbersWithinDays: true,
+                weekNumberCalculation: 'ISO',
+                height: 'parent', //高度撑满
+                eventClick: editEvent,
+                //点击空白日期创建事件
+                selectable: true,
+                selectMirror: true,
+                select: addSimpleEvent
+            });
+            calendar.render();
+
+            $(".datepicker").datepicker({
+                language: "zh-CN",
+                format: "yyyy-mm-dd",
+                todayHighlight: true,
+                autoclose: true,
+                weekStart: 0
+            });
+
+            $('#city').on('input', function () {
+                $('#weather').html(`<iframe name="weather_inc" src="http://i.tianqi.com/index.php?c=code&id=84&py=${$(this).val()}" width="130"
+                           height="82" frameborder="0" marginwidth="0" marginheight="0" scrolling="no"></iframe>`);
+            });
+
+            $('#search-input').on('input', function () {
+                if ($(this).val() === '') {
+                    $('#result').html('');
+                    return false;
+                }
+                $.ajax({
+                    url: host + '/api/searchEvent',
+                    async: true,
+                    data: {title: $(this).val()},
+                    type: 'POST',
+                    success: function (rst) {
+                        var eventsArr = JSON.parse(rst);
+                        console.log(eventsArr);
+                        $('#result').html('');
+                        eventsArr.map(function (item) {
+                            $('#result').append(`<li class="event-search-item" start='${item.start}'>时间：${item.start}<br/>日程：${item.title}</li><hr/>`);
+                        });
+                        $(".event-search-item").click(function () {
+                            calendar.gotoDate($(this).attr("start"));
+                            dialog({id: 'search'}).close();
+                        });
+                    }
+                });
+            });
+
+            $(`input:radio[name="repeatType"]`).change(function () {
+                if ($('input:radio[name="repeatType"]:checked').val() !== 'NULL')
+                    $('#enddateP').hide();
+                else {
+                    $('#enddateP').show();
+                }
+            });
+        });
+    </script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, Helvetica Neue, Helvetica, sans-serif;
+            font-size: 14px;
+            position: relative;
+        }
+
+        #calendar {
+            max-width: 900px;
+            height: 800px;
+            margin: 40px auto;
+            font-size: 1em;
+            direction: ltr;
+            text-align: left;
+        }
+
+        /*.fc-sun,.fc-sat{*/
+        /*background-color: #a8ffae;*/
+        /*}*/
+    </style>
+</head>
+<body>
+<!--<div id='calendar-container' style="display: block">-->
+<div id='calendar'></div>
+<!--</div>-->
+<div id="dialog-form" style="display:none">
+    <form class="form-inline">
+        <p>
+            <label>当日天气：</label>
+            <label id="weather"></label>
+        </p>
+        <p>
+            <label><span style="color: red">*</span>日程名称：</label>
+            <input type="text" class="form-control" id="eventTitle" autofocus="autofocus">
+        </p>
+        <p>
+            <label><span style="color: red">*</span>开始时间：</label>
+            <input type="text" class="time datepicker" id="startdate">
+        </p>
+        <p id="enddateP">
+            <label><span style="color: red">*</span>结束时间：</label>
+            <input type="text" class="time datepicker" id="enddate">
+        </p>
+        <p>
+            <label><span style="color: red">*</span>活动城市：</label>
+            <input type="text" class="form-control" id="city" placeholder="请输入城市拼音">
+        </p>
+        <p class="checkbox check">
+            <label><span style="color: red">*</span>重复类型：</label>
+            <label class="checkbox-inline"><input name="repeatType" type="radio" value="NULL" checked>无</label>
+            <label class="checkbox-inline"><input name="repeatType" type="radio" value="WEEKLY">周</label>
+            <label class="checkbox-inline"><input name="repeatType" type="radio" value="MONTHLY">月</label>
+            <label class="checkbox-inline"><input name="repeatType" type="radio" value="YEARLY">年</label>
+        </p>
+        <p>
+            <label><span style="color: red">*</span>日程类型：</label>
+            <label class="checkbox-inline"><input name="eventType" type="radio" value="生活" checked>生活</label>
+            <label class="checkbox-inline"><input name="eventType" type="radio" value="工作">工作</label>
+        </p>
+    </form>
+</div>
+<div id="search-result" style="display:none">
+    <input type="text" id="search-input" autofocus/>
+    <div>
+        <ul style="list-style-type:square;" id="result">
+        </ul>
+    </div>
+</div>
+</body>
+</html>
